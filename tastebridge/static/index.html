@@ -1,0 +1,84 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TasteBridge — cultural go-to-market agent</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{--bg:#0f1115;--card:#171a21;--line:#262b36;--fg:#e8eaf0;--mut:#8a93a6;--acc:#37d39a;--acc2:#f5b942}
+*{box-sizing:border-box}body{margin:0;font:14px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--fg)}
+header{padding:18px 28px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:14px}
+header h1{margin:0;font-size:20px}header span{color:var(--mut)}
+main{display:grid;grid-template-columns:340px 1fr;gap:18px;padding:18px 28px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px}
+label{display:block;color:var(--mut);font-size:12px;margin:10px 0 4px}
+input{width:100%;padding:9px 10px;background:#0c0e12;border:1px solid var(--line);border-radius:6px;color:var(--fg)}
+button{margin-top:14px;width:100%;padding:10px;border:0;border-radius:6px;background:var(--acc);color:#04130c;font-weight:600;cursor:pointer}
+button:disabled{opacity:.5}
+#trace{margin-top:14px;max-height:430px;overflow:auto;font-size:12px}
+.step{padding:6px 8px;border-left:2px solid var(--line);margin:4px 0}.step.ev{border-color:var(--acc)}.step.err{border-color:#f56}
+.step b{color:var(--acc2)}.mut{color:var(--mut)}
+table{width:100%;border-collapse:collapse}th,td{padding:8px;border-bottom:1px solid var(--line);text-align:left}th{color:var(--mut);font-weight:500}
+tr.top td{color:var(--acc)}#map{height:300px;border-radius:8px;margin-top:10px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}
+.city h3{margin:0 0 6px}.city li{margin:3px 0}.eid{color:var(--acc2);font-family:monospace}
+#evidence li{font-family:monospace;font-size:12px;color:var(--mut)}
+.bar{height:6px;background:#0c0e12;border-radius:3px}.bar i{display:block;height:6px;background:var(--acc);border-radius:3px}
+</style></head><body>
+<header><h1>🍵 TasteBridge</h1><span>Qloo-grounded go-to-market agent for Chinese brands going overseas · planner: <b id="llm">…</b></span></header>
+<main>
+<section class="card">
+ <label>Brand</label><input id="brand" value="Lumen Leaf (fictional Shenzhen tea brand)">
+ <label>Category</label><input id="category" value="bubble tea">
+ <label>Candidate cities (comma-separated, max 4)</label><input id="cities" value="Los Angeles, London, Singapore">
+ <button id="go">Run agent</button>
+ <div id="trace"></div>
+</section>
+<section>
+ <div class="card"><h2 style="margin:0 0 8px;font-size:16px">City comparison</h2><div id="table" class="mut">Run the agent to compare cities.</div><div id="map"></div></div>
+ <div id="cities-out" class="grid2"></div>
+ <div class="card" style="margin-top:18px"><h2 style="margin:0 0 8px;font-size:16px">Entry plan</h2><div id="plan" class="mut">—</div></div>
+ <div class="card" style="margin-top:18px"><h2 style="margin:0 0 8px;font-size:16px">Evidence (every claim cites one)</h2><ul id="evidence"></ul></div>
+</section></main>
+<script>
+const $=id=>document.getElementById(id), esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+fetch('/api/health').then(r=>r.json()).then(h=>$('llm').textContent=h.llm);
+const map=L.map('map').setView([30,0],2);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(map);
+let layer=L.layerGroup().addTo(map);
+function step(html,cls=''){const d=document.createElement('div');d.className='step '+cls;d.innerHTML=html;$('trace').appendChild(d);$('trace').scrollTop=1e9}
+function list(label,[names,eid]){return `<li>${label} <span class="eid">[${eid??'-'}]</span>: ${esc(names.join(', ')||'n/a')}</li>`}
+function render(m){
+ const R=m.report.ranking;
+ $('table').innerHTML=`<table><tr><th>City</th><th>Score</th><th>Venues</th><th>Avg rating</th><th>Chinese incumbents</th><th>Audience fit</th><th>Evidence</th></tr>`+
+  R.map((r,i)=>`<tr class="${i?'':'top'}"><td>${esc(r.city)}</td><td><b>${r.score}</b><div class="bar"><i style="width:${r.score}%"></i></div></td><td>${r.venues}</td><td>${r.avg_rating??'-'}</td><td>${r.chinese_incumbents.length}</td><td>${r.parts.audience_fit}</td><td class="eid">[${r.comp_eid}][${r.prof_eid}]</td></tr>`).join('')+'</table>';
+ $('cities-out').innerHTML=R.map(r=>`<div class="card city"><h3>${esc(r.city)} <span class="mut">· ${r.score}</span></h3><ul>
+  <li>Competitors <span class="eid">[${r.comp_eid}]</span>: ${esc(r.top_venues.join(', '))}</li>
+  <li>Chinese incumbents <span class="eid">[${r.comp_eid}]</span>: ${esc(r.chinese_incumbents.slice(0,4).map(x=>x.slice(0,28)).join(', ')||'none')}</li>
+  ${list('Music / KOL',r.artists)}${list('Brand collabs',r.brands)}${list('Film / TV',r.movies)}${list('Adjacent formats',r.adjacent)}</ul></div>`).join('');
+ layer.clearLayers(); const pts=[];
+ R.forEach((r,i)=>{(r.hotspots||[]).forEach(h=>{pts.push([h.lat,h.lon]);L.circleMarker([h.lat,h.lon],{radius:4+8*(h.affinity||0),color:i?'#f5b942':'#37d39a',fillOpacity:.6}).bindPopup(`${esc(r.city)} hotspot · affinity ${(h.affinity||0).toFixed(2)} [${r.hot_eid}]`).addTo(layer)});
+  if(r.coords){pts.push(r.coords);L.marker(r.coords).bindPopup(`<b>${esc(r.city)}</b> score ${r.score}`).addTo(layer)}});
+ if(pts.length) map.fitBounds(pts,{padding:[20,20]});
+ const t=R[0];
+ $('plan').innerHTML=`<ol><li>Enter <b>${esc(t.city)}</b> first (score ${t.score}) <span class="eid">[${t.comp_eid}][${t.prof_eid}]</span></li>
+  <li>Collabs: ${esc(t.brands[0].slice(0,2).join(', '))} <span class="eid">[${t.brands[1]}]</span>; KOL/music: ${esc(t.artists[0].slice(0,2).join(', '))} <span class="eid">[${t.artists[1]}]</span></li>
+  <li>Store concept: tea × ${esc(t.adjacent[0].slice(0,3).join(', '))} <span class="eid">[${t.adjacent[1]}]</span>${t.hotspot?`, first site near ${t.hotspot.lat.toFixed(3)},${t.hotspot.lon.toFixed(3)} <span class="eid">[${t.hot_eid}]</span>`:''}</li>
+  <li>Content: ${esc(t.movies[0].slice(0,2).join(', '))} <span class="eid">[${t.movies[1]}]</span></li></ol>`+
+  (m.report.llm_narrative?`<p style="white-space:pre-wrap">${esc(m.report.llm_narrative)}</p>`:'');
+ $('evidence').innerHTML=m.evidence.map(e=>`<li><span class="eid">[${e.id}]</span> ${esc(e.call)} → ${e.count}</li>`).join('');
+}
+$('go').onclick=async()=>{
+ $('go').disabled=true;$('trace').innerHTML='';
+ const body={brand:$('brand').value,category:$('category').value,cities:$('cities').value.split(',').map(s=>s.trim()).filter(Boolean)};
+ try{const res=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!res.ok){step(esc((await res.json()).error),'err');return}
+  const rd=res.body.getReader(),dec=new TextDecoder();let buf='';
+  for(;;){const{done,value}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;
+   while((i=buf.indexOf('\n'))>=0){const ev=JSON.parse(buf.slice(0,i));buf=buf.slice(i+1);
+    if(ev.type==='start')step(`Planner <b>${esc(ev.llm)}</b> started for ${esc(ev.brief.cities.join(', '))}`);
+    else if(ev.type==='tool_call')step(`→ <b>${esc(ev.name)}</b> <span class="mut">${esc(JSON.stringify(ev.args))}</span>`);
+    else if(ev.type==='evidence')step(`<span class="eid">[${ev.id}]</span> ${esc(ev.kind)} · ${esc(ev.city??'')} · ${ev.count} results <span class="mut">${esc(ev.preview.join(', '))}</span>`,'ev');
+    else if(ev.type==='error')step('⚠ '+esc(ev.message),'err');
+    else if(ev.type==='report'){step('✓ Report ready','ev');render(ev)}}}
+ }finally{$('go').disabled=false}};
+if(new URLSearchParams(location.search).has('autorun'))$('go').click();
+</script></body></html>
