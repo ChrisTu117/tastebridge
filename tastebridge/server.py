@@ -62,7 +62,7 @@ class H(BaseHTTPRequestHandler):
             rep = self.agent_factory(brief["cities"], brief["category"]).run(brief, on_event=emit)
             for r in rep["ranking"]:
                 r["coords"] = CITY_COORDS.get(r["city"].lower())
-            emit({"type": "report", "report": {k: rep.get(k) for k in ("brief", "weights", "ranking", "errors", "llm_narrative")},
+            emit({"type": "report", "report": {k: rep.get(k) for k in ("brief", "weights", "target", "ranking", "errors", "llm_narrative")},
                   "evidence": [{k: e[k] for k in ("id", "kind", "city", "call")} | {"count": len(e["data"])} for e in rep["evidence"]],
                   "markdown": render(rep)})
         except Exception as e:

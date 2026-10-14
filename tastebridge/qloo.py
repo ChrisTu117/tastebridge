@@ -148,6 +148,30 @@ class Qloo:
         return [{"lat": h["location"]["latitude"], "lon": h["location"]["longitude"],
                  "affinity": h.get("query", {}).get("affinity")} for h in r.get("heatmap", [])[:take]]
 
+    def compare(self, a_ids, b_ids, take=15):
+        """Analysis Compare: taste themes (tags) the two audiences share, with a
+        similarity score. Needs entity signals on both sides (verified)."""
+        if not a_ids or not b_ids:
+            return []
+        r = self.get("/v2/insights/compare", {"a.signal.interests.entities": ",".join(a_ids),
+                                              "b.signal.interests.entities": ",".join(b_ids), "take": take}).get("results", {})
+        seen, out = set(), []
+        for t in r.get("tags", []):
+            n = t.get("name")
+            if n and n.lower() not in seen and n.lower() not in GENERIC_TAGS:
+                seen.add(n.lower()); out.append({"name": n, "score": round((t.get("query") or {}).get("score", 0), 3)})
+        return out
+
+    def trending(self, entity_id, filter_type, start, end):
+        """Weekly trending series for one entity (population percentile and its
+        week-over-week change). The hackathon data needs a window of a few months."""
+        ft = filter_type if filter_type.startswith("urn:") else "urn:entity:" + filter_type
+        r = self.get("/v2/trending", {"filter.type": ft, "signal.interests.entities": entity_id,
+                                      "filter.start_date": start, "filter.end_date": end}).get("results", {})
+        pts = sorted(r.get("trending", []), key=lambda x: x.get("date", ""))
+        return [{"date": x["date"], "percentile": x.get("population_percentile"),
+                 "delta": x.get("population_percent_delta")} for x in pts]
+
 
 CITY_COORDS = {"singapore": (1.3521, 103.8198), "london": (51.5072, -0.1276), "los angeles": (34.0522, -118.2437),
                "new york": (40.7128, -74.006), "sydney": (-33.8688, 151.2093), "toronto": (43.6532, -79.3832),

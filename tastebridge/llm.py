@@ -82,15 +82,16 @@ class MockPlanner(LLM):
     """Deterministic offline planner: emits the canonical research plan as tool
     calls, one city at a time, then hands off to the deterministic synthesizer."""
     def __init__(self, cities, category):
-        self.queue = []
+        self.queue = [("competitors", {"city": c, "category": category}) for c in cities] + [("target_audience", {})]
         for c in cities:
-            self.queue += [("competitors", {"city": c, "category": category}),
-                           ("hotspots", {"city": c}),
+            self.queue += [("hotspots", {"city": c}),
                            ("audience_affinity", {"city": c, "domain": "artist"}),
                            ("audience_affinity", {"city": c, "domain": "brand"}),
                            ("audience_affinity", {"city": c, "domain": "movie"}),
                            ("audience_affinity", {"city": c, "domain": "tag"}),
-                           ("audience_profile", {"city": c})]
+                           ("audience_profile", {"city": c}),
+                           ("momentum", {"city": c})]
+        self.queue += [("compare_cities", {"city_a": a, "city_b": b}) for a, b in zip(cities, cities[1:])]
         self.n = 0
 
     def chat(self, messages, tools=None):

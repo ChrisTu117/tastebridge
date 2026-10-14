@@ -45,15 +45,24 @@ const map=L.map('map').setView([30,0],2);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(map);
 let layer=L.layerGroup().addTo(map);
 function step(html,cls=''){const d=document.createElement('div');d.className='step '+cls;d.innerHTML=html;$('trace').appendChild(d);$('trace').scrollTop=1e9}
+function md(t){const inl=x=>esc(x).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/(^|[^*])\*([^*\n]+)\*/g,'$1<i>$2</i>').replace(/`([^`]+)`/g,'<code>$1</code>');
+ let h='',inList=null;const close=()=>{if(inList){h+=`</${inList}>`;inList=null}};
+ for(const line of t.split('\n')){let m;
+  if(m=line.match(/^\s*#{1,6}\s+(.*)/)){close();h+=`<h4>${inl(m[1])}</h4>`}
+  else if(m=line.match(/^\s*[-*]\s+(.*)/)){if(inList!=='ul'){close();h+='<ul>';inList='ul'}h+=`<li>${inl(m[1])}</li>`}
+  else if(m=line.match(/^\s*\d+[.)]\s+(.*)/)){if(inList!=='ol'){close();h+='<ol>';inList='ol'}h+=`<li>${inl(m[1])}</li>`}
+  else if(line.trim()===''){close()}
+  else{close();h+=`<p>${inl(line)}</p>`}}
+ close();return h}
 function list(label,[names,eid]){return `<li>${label} <span class="eid">[${eid??'-'}]</span>: ${esc(names.join(', ')||'n/a')}</li>`}
 function render(m){
  const R=m.report.ranking;
- $('table').innerHTML=`<table><tr><th>City</th><th>Score</th><th>Venues</th><th>Avg rating</th><th>Chinese incumbents</th><th>Audience fit</th><th>Evidence</th></tr>`+
-  R.map((r,i)=>`<tr class="${i?'':'top'}"><td>${esc(r.city)}</td><td><b>${r.score}</b><div class="bar"><i style="width:${r.score}%"></i></div></td><td>${r.venues}</td><td>${r.avg_rating??'-'}</td><td>${r.chinese_incumbents.length}</td><td>${r.parts.audience_fit}</td><td class="eid">[${r.comp_eid}][${r.prof_eid}]</td></tr>`).join('')+'</table>';
+ $('table').innerHTML=`<table><tr><th>City</th><th>Score</th><th>Venues</th><th>Avg rating</th><th>Chinese incumbents</th><th>Audience fit</th><th>Momentum</th><th>Evidence</th></tr>`+
+  R.map((r,i)=>`<tr class="${i?'':'top'}"><td>${esc(r.city)}</td><td><b>${r.score}</b><div class="bar"><i style="width:${r.score}%"></i></div></td><td>${r.venues}</td><td>${r.avg_rating??'-'}</td><td>${r.chinese_incumbents.length}</td><td>${r.parts.audience_fit}</td><td>${r.parts.momentum}</td><td class="eid">[${r.comp_eid}][${r.prof_eid}][${r.mom_eid??'-'}]</td></tr>`).join('')+'</table>';
  $('cities-out').innerHTML=R.map(r=>`<div class="card city"><h3>${esc(r.city)} <span class="mut">· ${r.score}</span></h3><ul>
   <li>Competitors <span class="eid">[${r.comp_eid}]</span>: ${esc(r.top_venues.join(', '))}</li>
   <li>Chinese incumbents <span class="eid">[${r.comp_eid}]</span>: ${esc(r.chinese_incumbents.slice(0,4).map(x=>x.slice(0,28)).join(', ')||'none')}</li>
-  ${list('Music / KOL',r.artists)}${list('Brand collabs',r.brands)}${list('Film / TV',r.movies)}${list('Adjacent formats',r.adjacent)}</ul></div>`).join('');
+  ${(r.compare||[]).map(c=>`<li>vs ${esc(c.vs)} <span class="eid">[${c.eid}][${c.tag_eid??'-'}]</span>: shared ${esc(c.shared.join(', ')||'n/a')}${c.similarity!=null?` (similarity ${c.similarity})`:''}; only here ${esc(c.only_here.join(', ')||'n/a')}</li>`).join('')}${list('Music / KOL',r.artists)}${list('Brand collabs',r.brands)}${list('Film / TV',r.movies)}${list('Adjacent formats',r.adjacent)}</ul></div>`).join('');
  layer.clearLayers(); const pts=[];
  R.forEach((r,i)=>{(r.hotspots||[]).forEach(h=>{pts.push([h.lat,h.lon]);L.circleMarker([h.lat,h.lon],{radius:4+8*(h.affinity||0),color:i?'#f5b942':'#37d39a',fillOpacity:.6}).bindPopup(`${esc(r.city)} hotspot · affinity ${(h.affinity||0).toFixed(2)} [${r.hot_eid}]`).addTo(layer)});
   if(r.coords){pts.push(r.coords);L.marker(r.coords).bindPopup(`<b>${esc(r.city)}</b> score ${r.score}`).addTo(layer)}});
@@ -63,7 +72,7 @@ function render(m){
   <li>Collabs: ${esc(t.brands[0].slice(0,2).join(', '))} <span class="eid">[${t.brands[1]}]</span>; KOL/music: ${esc(t.artists[0].slice(0,2).join(', '))} <span class="eid">[${t.artists[1]}]</span></li>
   <li>Store concept: tea × ${esc(t.adjacent[0].slice(0,3).join(', '))} <span class="eid">[${t.adjacent[1]}]</span>${t.hotspot?`, first site near ${t.hotspot.lat.toFixed(3)},${t.hotspot.lon.toFixed(3)} <span class="eid">[${t.hot_eid}]</span>`:''}</li>
   <li>Content: ${esc(t.movies[0].slice(0,2).join(', '))} <span class="eid">[${t.movies[1]}]</span></li></ol>`+
-  (m.report.llm_narrative?`<p style="white-space:pre-wrap">${esc(m.report.llm_narrative)}</p>`:'');
+  (m.report.llm_narrative?`<div class="md">${md(m.report.llm_narrative)}</div>`:'');
  $('evidence').innerHTML=m.evidence.map(e=>`<li><span class="eid">[${e.id}]</span> ${esc(e.call)} → ${e.count}</li>`).join('');
 }
 $('go').onclick=async()=>{

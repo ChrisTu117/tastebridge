@@ -59,8 +59,36 @@ class TestTools(unittest.TestCase):
             return 200, {"results": {"entities": [{"name": "Thing", "entity_id": "1"}]}}
         rep = Agent(Qloo(key="k", transport=Fake(routes)), MockPlanner(["London"], "bubble tea")).run(
             {"brand": "B", "category": "bubble tea", "cities": ["London"]})
-        self.assertEqual(len(rep["evidence"]), 7)
+        self.assertEqual(len(rep["evidence"]), 9)  # target + 7 per-city + momentum
         md = render(rep); self.assertIn("| London |", md); self.assertIn("[E1]", md)
+
+
+class TestCompareTrending(unittest.TestCase):
+    def test_compare_dedupes_and_requires_entities(self):
+        def routes(p, q):
+            self.assertEqual(p, "/v2/insights/compare"); self.assertIn("a.signal.interests.entities", q)
+            t = {"name": "Vegetarian", "query": {"score": 0.78}}
+            return 200, {"results": {"tags": [t, t, {"name": "Casual", "query": {"score": 0.5}}, {"name": "Cozy", "query": {"score": 0.6}}]}}
+        q = Qloo(key="k", transport=Fake(routes))
+        self.assertEqual(q.compare(["a"], ["b"]), [{"name": "Vegetarian", "score": 0.78}, {"name": "Cozy", "score": 0.6}])
+        self.assertEqual(q.compare([], ["b"]), [])
+
+    def test_trending_sorted_and_momentum(self):
+        from tastebridge.agent import momentum_score
+        def routes(p, q):
+            self.assertEqual(p, "/v2/trending"); self.assertIn("filter.start_date", q)
+            return 200, {"results": {"trending": [{"date": "2026-10-01", "population_percentile": 0.6},
+                                                   {"date": "2026-04-01", "population_percentile": 0.5}]}}
+        s = Qloo(key="k", transport=Fake(routes)).trending("x", "artist", "2026-04-01", "2026-10-01")
+        self.assertEqual(s[0]["date"], "2026-04-01")
+        self.assertAlmostEqual(momentum_score([s]), round(0.7 * 0.6 + 0.3 * 0.7, 3))
+        self.assertIsNone(momentum_score([]))
+
+    def test_fit_uses_qloo_target(self):
+        prof = {"age": {"24_and_younger": 0.5, "55_and_older": -0.5}, "gender": {"female": 0.3, "male": -0.3}}
+        self.assertGreater(fit_score(prof, prof), 0.99)
+        flipped = {"age": {"24_and_younger": -0.5, "55_and_older": 0.5}, "gender": {"female": -0.3, "male": 0.3}}
+        self.assertLess(fit_score(prof, flipped), 0.01)
 
 
 if __name__ == "__main__": unittest.main()
